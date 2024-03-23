@@ -1,0 +1,9 @@
+{
+    "files.associations": {
+        "stdio.h": "c",
+        "i2s_register.h": "c",
+        "i2s.h": "c",
+        "cmath": "c"
+    },
+    "C_Cpp.default.compilerPath": "/usr/bin/gcc"
+}

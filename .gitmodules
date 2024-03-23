@@ -1,0 +1,3 @@
+[submodule "pulse_audio_implementation/libwave"]
+	path = pulse_audio_implementation/libwave
+	url = https://github.com/brglng/libwave.git
