@@ -38,7 +38,7 @@ struct engineAudio
     int16_t *raw_audio;
     float rpm;
     int numSamples;
-    int currentIdx;
+    float currentIdx;
     char *filename;
     float gain;
 };
@@ -76,7 +76,6 @@ int EngineAudioLoadData(struct engineAudio *out)
 
     out->numSamples = numSamples;
     out->raw_audio = raw_audio;
-    out->currentIdx = 0;
     return 0;
 }
 
@@ -86,6 +85,21 @@ float randn()
     for (int i = 0; i < 12; i++)
     {
         retval += ((float)rand()) / RAND_MAX;
+    }
+    return retval;
+}
+
+float getInterpolatedSample(const struct engineAudio* audio){
+    float retval = 0;
+    for (int i = -10; i <= 10; i++)
+    {
+        int idx = (i + (int)audio->currentIdx) % audio->numSamples;
+        if (idx < 0)
+            idx += audio->numSamples;
+        if (i != 0)
+            retval += (float) (audio->raw_audio[idx])*sin(audio->currentIdx +i)/(float)(audio->currentIdx +i);
+        else
+            retval += (float) (audio->raw_audio[idx]);
     }
     return retval;
 }
@@ -143,32 +157,26 @@ int main(int argc, char *argv[])
     wave_set_sample_rate(of,SAMPLE_RATE);
     wave_set_sample_size(of,sizeof(int16_t));
 
-#define MAXRPM 67
+#define MAXRPM 120
 #define MINRPM 25
 #define SIN_AMMOUNT 0.0
     float current_rpm = MINRPM;
     float sin_phase = 0;
     int audioIdx = 0;
-    for (float t = 0; t < 14;)
+    for (float t = 0; t < 30;)
     {
         int16_t buf[1024];
         for (size_t i = 0; i < 1024; i++)
         {
 #define STEP_SPEED 0.3 / SAMPLE_RATE
             t += 1.0 / SAMPLE_RATE;
-            if (fmod(t, 7) > 3.5)
+            if (fmod(t, 10) > 5)
                 current_rpm += (MAXRPM - current_rpm) * (STEP_SPEED);
             else
                 current_rpm += (MINRPM - current_rpm) * (STEP_SPEED);
 
-            current_rpm += randn() * 0.08;
-            if (current_rpm > MAXRPM)
-                current_rpm = MAXRPM;
-            else if (current_rpm < MINRPM)
-                current_rpm = MINRPM;
-
             // audio index
-            if (current_rpm > audios[audioIdx + 1].rpm)
+            if (current_rpm > audios[audioIdx + 1].rpm && audioIdx<3)
             {
                 audioIdx++;
                 printf("audioIdx %d \n", audioIdx);
@@ -180,24 +188,18 @@ int main(int argc, char *argv[])
             }
             
             float lerp_factor = (current_rpm - audios[audioIdx].rpm) / (audios[audioIdx + 1].rpm - audios[audioIdx].rpm);
+            
+            //adjust plaback speed based on rpm
+            audios[audioIdx].currentIdx += 1 + (current_rpm - audios[audioIdx].rpm)/audios[audioIdx].rpm;
+            audios[audioIdx+1].currentIdx += 1 + (current_rpm - audios[audioIdx+1].rpm)/audios[audioIdx+1].rpm;
 
-            float freq = (current_rpm*1.5) * 2.0 * 3.1415 / SAMPLE_RATE; // SAMPLE_RATE (HZ) = 2*pi, 1HZ = 2*pi/SAMPLE_RATE
-            sin_phase += freq;
-            // buf[i] = (double)(raw_audio[audioIdx % numSamples]) * sin(sin_phase)*amp;
-            // buf[i] = audios[audioIdx].raw_audio[audios[audioIdx].currentIdx % audios[audioIdx].numSamples];
-            // buf[i] = sin(sin_phase)*(float)(1<<15);
-            float v = (float)(audios[audioIdx].raw_audio[audios[audioIdx].currentIdx % audios[audioIdx].numSamples]) * audios[audioIdx].gain;
-            if (lerp_factor > 0){
+            float v = getInterpolatedSample(&audios[audioIdx])* audios[audioIdx].gain;
+            if (audioIdx < 3){
                 v *= (1-lerp_factor);
-                v += (float)(audios[audioIdx + 1].raw_audio[audios[audioIdx + 1].currentIdx % audios[audioIdx + 1].numSamples]) * (lerp_factor)*audios[audioIdx + 1].gain;
+                v += getInterpolatedSample(&audios[audioIdx+1])* audios[audioIdx+1].gain * lerp_factor;
             }
-            v *= (1-SIN_AMMOUNT);
-            v += SIN_AMMOUNT * sin(sin_phase)*(float)INT16_MAX;
             // buf[i] += (randn()*1000);
             buf[i] = v;
-            
-            audios[audioIdx].currentIdx++;
-            audios[audioIdx + 1].currentIdx++;
         }
 
         /* ... and play it */
