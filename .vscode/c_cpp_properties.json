@@ -5,6 +5,7 @@
             "includePath": [
                 "${workspaceFolder}/**",
                 "${workspaceFolder}/pulse_audio_implementation/libwave/include/",
+                "~/esp/esp-idf/components/driver/**"
             ],
             "defines": [],
             "cStandard": "c17",

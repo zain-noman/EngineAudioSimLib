@@ -3,7 +3,12 @@
         "stdio.h": "c",
         "i2s_register.h": "c",
         "i2s.h": "c",
-        "cmath": "c"
+        "cmath": "c",
+        "array": "c",
+        "string_view": "c",
+        "initializer_list": "c",
+        "utility": "c",
+        "valarray": "c"
     },
     "C_Cpp.default.compilerPath": "/usr/bin/gcc"
 }

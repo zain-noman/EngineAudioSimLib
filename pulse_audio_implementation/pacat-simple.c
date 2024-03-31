@@ -90,8 +90,13 @@ float randn()
 }
 
 float getInterpolatedSample(const struct engineAudio* audio){
-    #define WhittakerShannonInterpolation 1
-    #if (WhittakerShannonInterpolation)
+    #define WhittakerShannonInterpolation 0
+    #define LinearInterpolation 1
+    #define ZeroOrderHold 2
+
+    #define interpolationMethod LinearInterpolation
+
+    #if (interpolationMethod == WhittakerShannonInterpolation)
     float retval = 0;
     for (int i = -10; i <= 10; i++)
     {
@@ -103,11 +108,13 @@ float getInterpolatedSample(const struct engineAudio* audio){
         else
             retval += (float) (audio->raw_audio[idx]);
     }
-    #else
+    #elif (interpolationMethod == LinearInterpolation)
     //linear interpolation
     float lerpVal = audio->currentIdx - floor(audio->currentIdx);
     float retval = audio->raw_audio[(int)(audio->currentIdx) % audio->numSamples] * (1-lerpVal) +
                    audio->raw_audio[((int)(audio->currentIdx)+1) % audio->numSamples] * (lerpVal);
+    #else
+        float retval = audio->raw_audio[(int)(audio->currentIdx) % audio->numSamples];
     #endif
     return retval;
 }

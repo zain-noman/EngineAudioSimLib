@@ -1,1 +1,4 @@
 pulse_audio_implementation/build/*
+
+esp_idf_implementation/i2s_std/build/*
+esp_idf_implementation/i2s_std/sdkconfig
