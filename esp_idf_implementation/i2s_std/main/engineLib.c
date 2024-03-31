@@ -84,7 +84,7 @@ float getInterpolatedSample(const struct engineAudio *audio)
 
 void fillBufEngineSound(int16_t *buf, size_t size, bool revUp)
 {
-    static float current_rpm = 0;
+    static float current_rpm = MINRPM;
     static int audioIdx = 0;
 
     float rpmToApproach = revUp ? MAXRPM : MINRPM;
@@ -101,7 +101,7 @@ void fillBufEngineSound(int16_t *buf, size_t size, bool revUp)
             audioIdx++;
             printf("audioIdx %d \n", audioIdx);
         }
-        else if (current_rpm < audios[audioIdx].rpm)
+        else if (current_rpm < audios[audioIdx].rpm && audioIdx != 0)
         {
             audioIdx--;
             printf("audioIdx %d \n", audioIdx);

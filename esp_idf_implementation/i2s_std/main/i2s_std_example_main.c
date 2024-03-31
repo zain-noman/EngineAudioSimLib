@@ -18,15 +18,26 @@ void fillBufEngineSound(int16_t *buf, size_t size, bool revUp);
 void initEngineAudio();
 
 static i2s_chan_handle_t tx_chan; // I2S tx channel handler
-
 #define BUFSIZE 1024
+static int16_t buf1[BUFSIZE];
+static int16_t buf2[BUFSIZE];
+SemaphoreHandle_t bufFilledSem;
+SemaphoreHandle_t bufTransmittedSem;
 
-IRAM_ATTR bool i2s_send_isr(i2s_chan_handle_t handle, i2s_event_data_t *event, void *user_ctx)
+void i2s_write_task(void *args)
 {
-    QueueHandle_t i2s_done_queue = *((QueueHandle_t *)user_ctx);
-    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
-    xQueueSendFromISR(i2s_done_queue, event, &xHigherPriorityTaskWoken);
-    return xHigherPriorityTaskWoken == pdTRUE;
+    int16_t* bufToSend = buf1;
+    while (true)
+    {
+        if(xSemaphoreTake(bufFilledSem, pdMS_TO_TICKS(1000)) == pdFALSE){
+            printf("buffer not filled");
+            break;
+        }
+        i2s_channel_write(tx_chan, bufToSend, BUFSIZE*sizeof(int16_t), NULL, 1000);
+        xSemaphoreGive(bufTransmittedSem);
+        bufToSend = (bufToSend == buf1) ? buf2 : buf1;
+    }
+    vTaskDelete(NULL);
 }
 
 void app_main(void)
@@ -50,14 +61,6 @@ void app_main(void)
         },
     };
     ESP_ERROR_CHECK(i2s_channel_init_std_mode(tx_chan, &tx_std_cfg));
-    i2s_event_callbacks_t i2s_callbacks = {
-        .on_recv = NULL,
-        .on_recv_q_ovf = NULL,
-        .on_sent = i2s_send_isr,
-        .on_send_q_ovf = NULL,
-    };
-    QueueHandle_t i2s_done_queue = xQueueCreate(10, sizeof(i2s_event_data_t));
-    i2s_channel_register_event_callback(tx_chan, &i2s_callbacks, &i2s_done_queue);
 
     gpio_config_t btncfg = {
         .pin_bit_mask = BIT64(GPIO_NUM_16),
@@ -68,37 +71,40 @@ void app_main(void)
     };
     gpio_config(&btncfg);
 
-    int16_t *w_buf = (int16_t *)calloc(sizeof(int16_t), BUFSIZE);
-    assert(w_buf); // Check if w_buf allocation success
     initEngineAudio();
-    fillBufEngineSound(w_buf, BUFSIZE,false);
-    
-    size_t w_bytes = BUFSIZE;
+    fillBufEngineSound(buf1, BUFSIZE, false);
+
+    size_t w_bytes = BUFSIZE*sizeof(int16_t);
     /* (Optional) Preload the data before enabling the TX channel, so that the valid data can be transmitted immediately */
-    while (w_bytes == BUFSIZE)
+    while (w_bytes == BUFSIZE*sizeof(int16_t))
     {
         /* Here we load the target buffer repeatedly, until all the DMA buffers are preloaded */
-        ESP_ERROR_CHECK(i2s_channel_preload_data(tx_chan, w_buf, BUFSIZE, &w_bytes));
+        ESP_ERROR_CHECK(i2s_channel_preload_data(tx_chan, buf1, BUFSIZE*sizeof(int16_t), &w_bytes));
     }
 
+    bufFilledSem = xSemaphoreCreateBinary();
+    bufTransmittedSem = xSemaphoreCreateBinary();
+    
     /* Enable the TX channel */
     ESP_ERROR_CHECK(i2s_channel_enable(tx_chan));
-
+    xTaskCreate(i2s_write_task, "i2s_write", 4096, NULL, 2, NULL);
+    
+    int16_t* bufToFill = buf2;
+    xSemaphoreGive(bufFilledSem);
     while (1)
     {
-        i2s_event_data_t evnt;
-        if (xQueueReceive(i2s_done_queue, &evnt, pdMS_TO_TICKS(1000)) == pdFALSE)
-        {
-            printf("Write Task: i2s write failed\n");
-            continue;
-        }
         bool revUp = !gpio_get_level(GPIO_NUM_16);
-        fillBufEngineSound(evnt.data, evnt.size,revUp);
-        
-        if (uxQueueMessagesWaiting(i2s_done_queue) != 0){
-            printf("underflow \n");
+        // printf("bufFilling \n");
+        fillBufEngineSound(bufToFill, BUFSIZE, revUp);
+        //wait for previous tx to finish 
+        vTaskDelay(pdMS_TO_TICKS(10));
+        if(xSemaphoreTake(bufTransmittedSem,pdMS_TO_TICKS(1000)) == pdFALSE){
+            printf("buf wasnt transmitted");
+            break;
         }
+        //tell that new tx is available
+        xSemaphoreGive(bufTransmittedSem);
+        bufToFill = (bufToFill == buf1) ? buf2 : buf1;
     }
-    free(w_buf);
     vTaskDelete(NULL);
 }
