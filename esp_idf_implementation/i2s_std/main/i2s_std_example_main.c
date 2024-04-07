@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "driver/i2s_std.h"
+#include "driver/i2s_pdm.h"
 #include "driver/gpio.h"
 #include "esp_check.h"
 #include "sdkconfig.h"
@@ -19,9 +19,9 @@ void initEngineAudio();
 
 static i2s_chan_handle_t tx_chan; // I2S tx channel handler
 #define BUFSIZE 1024
-static int16_t buf1[BUFSIZE];
-static int16_t buf2[BUFSIZE];
-SemaphoreHandle_t bufFilledSem;
+static int16_t* buf1;
+static int16_t* buf2;
+QueueHandle_t bufFilledQueue;
 SemaphoreHandle_t bufTransmittedSem;
 
 void i2s_write_task(void *args)
@@ -29,11 +29,14 @@ void i2s_write_task(void *args)
     int16_t* bufToSend = buf1;
     while (true)
     {
-        if(xSemaphoreTake(bufFilledSem, pdMS_TO_TICKS(1000)) == pdFALSE){
+        fflush(stdout);
+        if(xQueueReceive(bufFilledQueue, &bufToSend ,pdMS_TO_TICKS(1000)) == pdFALSE){
             printf("buffer not filled");
             break;
         }
+        fflush(stdout);
         i2s_channel_write(tx_chan, bufToSend, BUFSIZE*sizeof(int16_t), NULL, 1000);
+        printf("buffer tx ed \n");
         xSemaphoreGive(bufTransmittedSem);
         bufToSend = (bufToSend == buf1) ? buf2 : buf1;
     }
@@ -42,34 +45,32 @@ void i2s_write_task(void *args)
 
 void app_main(void)
 {
-    i2s_chan_config_t tx_chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
+    i2s_chan_config_t tx_chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
     ESP_ERROR_CHECK(i2s_new_channel(&tx_chan_cfg, &tx_chan, NULL));
-    i2s_std_config_t tx_std_cfg = {
-        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(16000),
-        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO),
+    i2s_pdm_tx_config_t tx_cfg = {
+        .clk_cfg = I2S_PDM_TX_CLK_DAC_DEFAULT_CONFIG(16000),
+        .slot_cfg = I2S_PDM_TX_SLOT_DAC_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO),
         .gpio_cfg = {
-            .mclk = I2S_GPIO_UNUSED, // some codecs may require mclk signal, this example doesn't need it
-            .bclk = GPIO_NUM_16,
-            .ws = GPIO_NUM_17,
+            .clk = GPIO_NUM_16,
             .dout = GPIO_NUM_15,
-            .din = I2S_GPIO_UNUSED,
             .invert_flags = {
-                .mclk_inv = false,
-                .bclk_inv = false,
-                .ws_inv = false,
+                .clk_inv = false,
             },
         },
     };
-    ESP_ERROR_CHECK(i2s_channel_init_std_mode(tx_chan, &tx_std_cfg));
+    ESP_ERROR_CHECK(i2s_channel_init_pdm_tx_mode(tx_chan, &tx_cfg));
 
     gpio_config_t btncfg = {
-        .pin_bit_mask = BIT64(GPIO_NUM_16),
+        .pin_bit_mask = BIT64(GPIO_NUM_40),
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_ENABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
     gpio_config(&btncfg);
+
+    buf1 = heap_caps_malloc(BUFSIZE*sizeof(int16_t), MALLOC_CAP_DMA);
+    buf2 = heap_caps_malloc(BUFSIZE*sizeof(int16_t), MALLOC_CAP_DMA);
 
     initEngineAudio();
     fillBufEngineSound(buf1, BUFSIZE, false);
@@ -82,18 +83,19 @@ void app_main(void)
         ESP_ERROR_CHECK(i2s_channel_preload_data(tx_chan, buf1, BUFSIZE*sizeof(int16_t), &w_bytes));
     }
 
-    bufFilledSem = xSemaphoreCreateBinary();
+    bufFilledQueue = xQueueCreate(10,sizeof(int16_t*));
     bufTransmittedSem = xSemaphoreCreateBinary();
-    
+
     /* Enable the TX channel */
     ESP_ERROR_CHECK(i2s_channel_enable(tx_chan));
     xTaskCreate(i2s_write_task, "i2s_write", 4096, NULL, 2, NULL);
     
     int16_t* bufToFill = buf2;
-    xSemaphoreGive(bufFilledSem);
+    xQueueSend(bufFilledQueue, &buf1, pdMS_TO_TICKS(1000));
+    fflush(stdout);
     while (1)
     {
-        bool revUp = !gpio_get_level(GPIO_NUM_16);
+        bool revUp = !gpio_get_level(GPIO_NUM_40);
         // printf("bufFilling \n");
         fillBufEngineSound(bufToFill, BUFSIZE, revUp);
         //wait for previous tx to finish 
@@ -103,8 +105,12 @@ void app_main(void)
             break;
         }
         //tell that new tx is available
-        xSemaphoreGive(bufTransmittedSem);
-        bufToFill = (bufToFill == buf1) ? buf2 : buf1;
+        xQueueSend(bufFilledQueue, &bufToFill, pdMS_TO_TICKS(1000));
+        printf("buf sent for transmission\n");
+        if (bufToFill == buf1)
+            bufToFill = buf2;
+        else
+            bufToFill = buf1;
     }
     vTaskDelete(NULL);
 }
