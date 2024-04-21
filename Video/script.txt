@@ -1,0 +1,37 @@
+Intro
+    Hello Youtube, 
+    Today  engine sound  simulated. 
+    disclaimer, no resources
+        results tinkering not best way
+        audio decent tho
+    use case video games,
+    cosplay prop of Nero's Sword from Devil May Cry.
+    
+    lezgo into process
+
+    Title Screen: Simulating an Engine
+
+Step 1: Recording the Audio
+
+    nothing special
+        phone's audio recorder.
+        placed phone started recording
+        
+    get clips with steady rpm
+    start your engine neutral
+        press slightly accelerator 
+        rpm to settle.
+        repeat 4/5 times, in my case 4 seemed sufficient
+        
+    another handy thing engine sounds normally for reference
+    recording should sound like this
+
+Step 2: Editing the Audio Files
+    make suitable for the later steps
+    Enable the spectrum 
+    Main peak rpm, harmonics
+    clip 0.5s
+    cross fade loop
+    low freq noise
+
+
