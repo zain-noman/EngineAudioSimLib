@@ -3,6 +3,6 @@ project(engineSound)
 
 add_subdirectory(libwave)
 
-add_executable(engineSound pacat-simple.c)
+add_executable(engineSound "pacat-simple.c" "libEngineSound.c")
 
 target_link_libraries(engineSound pulse pulse-simple m wave)
