@@ -73,6 +73,13 @@ static float getInterpolatedSample(const struct EngineAudio *audio)
 
 void fillBufferEngineSound(struct EngineSimulator *sim, int16_t *buf, int bufSize, bool revUp)
 {
+    struct EngineAudio* firstAudio = &sim->audios[sim->audioIdx];
+    struct EngineAudio* secondAudio;
+    if (sim->audioIdx + 1 < sim->numAudios)
+        secondAudio = &sim->audios[sim->audioIdx+1];
+    else
+        secondAudio = NULL;
+
 #define STEP_SPEED 0.3 / SAMPLE_RATE
     for (size_t i = 0; i < 1024; i++)
     {
@@ -84,34 +91,52 @@ void fillBufferEngineSound(struct EngineSimulator *sim, int16_t *buf, int bufSiz
         sim->current_rpm = STEP_SPEED * target_rpm + (1 - STEP_SPEED) * sim->current_rpm;
 
         // audio index
-        if (sim->current_rpm > sim->audios[sim->audioIdx + 1].rpm && sim->audioIdx + 1 < sim->numAudios)
+        if (secondAudio != NULL && sim->current_rpm > secondAudio->rpm)
         {
             sim->audioIdx++;
+            firstAudio = &sim->audios[sim->audioIdx];
+            if (sim->audioIdx + 1 < sim->numAudios)
+                secondAudio = &sim->audios[sim->audioIdx+1];
+            else
+                secondAudio = NULL;
             printf("audioIdx %d \n", sim->audioIdx);
         }
-        else if (sim->current_rpm < sim->audios[sim->audioIdx].rpm && sim->audioIdx != 0)
+        else if (sim->audioIdx != 0 && sim->current_rpm < firstAudio->rpm)
         {
             sim->audioIdx--;
+            firstAudio = &sim->audios[sim->audioIdx];
+            if (sim->audioIdx + 1 < sim->numAudios)
+                secondAudio = &sim->audios[sim->audioIdx+1];
+            else
+                secondAudio = NULL;
             printf("audioIdx %d \n", sim->audioIdx);
         }
 
-        float lerp_factor = (sim->current_rpm - sim->audios[sim->audioIdx].rpm) / (sim->audios[sim->audioIdx + 1].rpm - sim->audios[sim->audioIdx].rpm);
+        float lerp_factor;
+        if (secondAudio != NULL) 
+            lerp_factor = (sim->current_rpm - firstAudio->rpm) / 
+                            (secondAudio->rpm - firstAudio->rpm);
+        else 
+            lerp_factor = 0;
+        
         if (lerp_factor > 1)
             lerp_factor = 1;
         else if (lerp_factor < 0)
             lerp_factor = 0;
 
-        // adjust plaback speed based on rpm
-        sim->audios[sim->audioIdx].currentIdx += 1 + (sim->current_rpm - sim->audios[sim->audioIdx].rpm) / sim->audios[sim->audioIdx].rpm;
-        sim->audios[sim->audioIdx + 1].currentIdx += 1 + (sim->current_rpm - sim->audios[sim->audioIdx + 1].rpm) / sim->audios[sim->audioIdx + 1].rpm;
-
-        float v = getInterpolatedSample(&sim->audios[sim->audioIdx]) * sim->audios[sim->audioIdx].gain;
-        if (sim->audioIdx + 1 < sim->numAudios)
+        
+        float v = getInterpolatedSample(firstAudio) * firstAudio->gain;
+        if (secondAudio != NULL)
         {
             v *= (1 - lerp_factor);
-            v += getInterpolatedSample(&sim->audios[sim->audioIdx + 1]) * sim->audios[sim->audioIdx + 1].gain * lerp_factor;
+            v += getInterpolatedSample(secondAudio) * secondAudio->gain * lerp_factor;
         }
-        // buf[i] += (randn()*1000);
+        
+        // adjust plaback speed based on rpm
+        firstAudio->currentIdx += 1 + (sim->current_rpm - firstAudio->rpm) / firstAudio->rpm;
+        if (secondAudio != NULL)
+            secondAudio->currentIdx += 1 + (sim->current_rpm - secondAudio->rpm) / secondAudio->rpm;
+        
         buf[i] = v;
     }
 }
