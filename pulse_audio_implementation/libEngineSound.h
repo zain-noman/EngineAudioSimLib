@@ -24,4 +24,4 @@ struct EngineSimulator{
 };
 
 
-void fillBufferEngineSound(struct EngineSimulator *sim, int16_t* buf, int bufSize, bool revUp);
+void fillBufferEngineSound(struct EngineSimulator *sim, int16_t* buf, int bufSize, float target_rpm);

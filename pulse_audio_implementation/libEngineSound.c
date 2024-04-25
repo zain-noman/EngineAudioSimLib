@@ -71,7 +71,7 @@ static float getInterpolatedSample(const struct EngineAudio *audio)
     return retval;
 }
 
-void fillBufferEngineSound(struct EngineSimulator *sim, int16_t *buf, int bufSize, bool revUp)
+void fillBufferEngineSound(struct EngineSimulator *sim, int16_t *buf, int bufSize, float target_rpm)
 {
     struct EngineAudio* firstAudio = &sim->audios[sim->audioIdx];
     struct EngineAudio* secondAudio;
@@ -83,11 +83,6 @@ void fillBufferEngineSound(struct EngineSimulator *sim, int16_t *buf, int bufSiz
 #define STEP_SPEED 0.3 / SAMPLE_RATE
     for (size_t i = 0; i < 1024; i++)
     {
-        float target_rpm;
-        if (revUp)
-            target_rpm = MAXRPM;
-        else
-            target_rpm = MINRPM;
         sim->current_rpm = STEP_SPEED * target_rpm + (1 - STEP_SPEED) * sim->current_rpm;
 
         // audio index

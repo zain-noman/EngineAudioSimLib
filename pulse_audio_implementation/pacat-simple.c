@@ -84,8 +84,9 @@ int main(int argc, char *argv[])
     {
         int16_t buf[1024];
         bool revup = fmod(t,10) > 5;
+        float target_rpm = (revup) ? MAXRPM : MINRPM;
 
-        fillBufferEngineSound(&sim,buf,1024,revup);
+        fillBufferEngineSound(&sim,buf,1024,target_rpm);
 
         if (pa_simple_write(s, buf, sizeof(buf), &error) < 0)
         {
