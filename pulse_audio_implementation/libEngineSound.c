@@ -40,23 +40,26 @@ int EngineAudioLoadData(struct EngineAudio *out, char *filename)
     return 0;
 }
 
-static float getInterpolatedSample(const struct EngineAudio *audio)
+static float getInterpolatedSample(const struct EngineAudio *audio, float rate)
 {
 #define WhittakerShannonInterpolation 0
 #define LinearInterpolation 1
 #define ZeroOrderHold 2
 
-#define interpolationMethod LinearInterpolation
+#define interpolationMethod WhittakerShannonInterpolation
 
 #if (interpolationMethod == WhittakerShannonInterpolation)
     float retval = 0;
+    float offset = audio->currentIdx - floor(audio->currentIdx);
     for (int i = -10; i <= 10; i++)
     {
         int idx = (i + (int)audio->currentIdx) % audio->numSamples;
         if (idx < 0)
             idx += audio->numSamples;
-        if (i != 0)
-            retval += (float)(audio->raw_audio[idx]) * sin(audio->currentIdx + i) / (float)(audio->currentIdx + i);
+        if (fabs((float)i-offset) > 0.01){
+            float pi_x  = 3.1415 * ((float)i-offset);
+            retval += (float)(audio->raw_audio[idx]) * sin(pi_x/rate) / (float)(pi_x);
+        }
         else
             retval += (float)(audio->raw_audio[idx]);
     }
@@ -120,11 +123,17 @@ void fillBufferEngineSound(struct EngineSimulator *sim, int16_t *buf, int bufSiz
             lerp_factor = 0;
 
         
-        float v = getInterpolatedSample(firstAudio) * firstAudio->gain;
+        float v = getInterpolatedSample(
+            firstAudio,
+            1 + (sim->current_rpm - firstAudio->rpm) / firstAudio->rpm
+        ) * firstAudio->gain;
         if (secondAudio != NULL)
         {
             v *= (1 - lerp_factor);
-            v += getInterpolatedSample(secondAudio) * secondAudio->gain * lerp_factor;
+            v += getInterpolatedSample(
+                secondAudio,
+                1 + (sim->current_rpm - secondAudio->rpm) / secondAudio->rpm
+            ) * secondAudio->gain * lerp_factor;
         }
         
         // adjust plaback speed based on rpm
